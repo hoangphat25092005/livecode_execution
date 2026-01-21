@@ -2,6 +2,7 @@ from datetime import datetime
 from app.models.db import db
 from app.models.execution_model import Execution
 from app.models.code_sessions_model import CodeSession
+from app.tasks.execution_tasks import execute_code_task
 
 class CodeExecutionService:
     EXECUTION_TIMEOUT = 30
@@ -22,8 +23,7 @@ class CodeExecutionService:
         db.session.add(execution)
         db.session.commit()
 
-        # Send task to Celery worker (asynchronous)
-        from app.tasks.execution_tasks import execute_code_task
+        # Send task to Celery worker
         execute_code_task.delay(
             str(execution.id),
             session.language,
@@ -48,7 +48,7 @@ class CodeExecutionService:
             "status": execution.status
         }
         
-        # Add additional fields when completed
+        # additional information when completed
         if execution.status == 'COMPLETED':
             result.update({
                 "stdout": execution.stdout or "",
