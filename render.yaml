@@ -1,7 +1,6 @@
 ﻿databases:
   - name: livecode-postgres
     databaseName: livecode_platform
-    user: postgres
     plan: free
     region: oregon
 
@@ -11,6 +10,7 @@ services:
     plan: free
     region: oregon
     maxmemoryPolicy: noeviction
+    ipAllowList: []
 
   - type: web
     name: livecode-api
