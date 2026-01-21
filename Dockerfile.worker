@@ -20,5 +20,5 @@ RUN pip install --no-cache-dir -r requirement.txt
 # Copy application code
 COPY . .
 
-# Run Celery worker with solo pool (required for Render free tier)
-CMD ["celery", "-A", "celery_worker.celery", "worker", "--loglevel=info", "--pool=solo"]
+# Run Celery worker with a simple health check server in background
+CMD sh -c 'python -m http.server ${PORT:-8080} & celery -A celery_worker.celery worker --loglevel=info --pool=solo'

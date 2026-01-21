@@ -27,5 +27,5 @@ COPY . .
 # Expose port
 EXPOSE 5000
 
-# Use Gunicorn for production (better than Flask dev server)
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "main:app"]
+# Use Gunicorn for production with dynamic PORT for Render
+CMD gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --timeout 120 --access-logfile - --error-logfile - main:app

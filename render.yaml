@@ -50,6 +50,7 @@ services:
     plan: free
     region: oregon
     dockerfilePath: ./Dockerfile.worker
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
