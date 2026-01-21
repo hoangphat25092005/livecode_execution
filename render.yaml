@@ -44,7 +44,7 @@ services:
         value: "False"
     healthCheckPath: /health
 
-  - type: worker
+  - type: web
     name: livecode-celery-worker
     env: docker
     plan: free
