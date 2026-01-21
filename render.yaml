@@ -1,80 +1,157 @@
-databases:services:
+databases:databases:services:
 
-  - name: livecode-postgres  # PostgreSQL Database
+  - name: livecode-postgres
 
-    databaseName: livecode_platform  - type: pserv
+    databaseName: livecode_platform  - name: livecode-postgres  # PostgreSQL Database
 
-    user: postgres    name: livecode-postgres
+    user: postgres
 
-    plan: free    env: docker
-
-    region: oregon    plan: free
+    plan: free    databaseName: livecode_platform  - type: pserv
 
     region: oregon
 
-services:    dockerfilePath: ./Dockerfile.postgres
+    user: postgres    name: livecode-postgres
 
-  # Redis    envVars:
+services:
 
-  - type: redis      - key: POSTGRES_USER
+  # Redis    plan: free    env: docker
 
-    name: livecode-redis        value: postgres
+  - type: redis
 
-    plan: free      - key: POSTGRES_PASSWORD
+    name: livecode-redis    region: oregon    plan: free
 
-    region: oregon        generateValue: true
-
-    maxmemoryPolicy: noeviction      - key: POSTGRES_DB
-
-        value: livecode_platform
-
-  # Flask API Web Service
-
-  - type: web  # Redis
-
-    name: livecode-api  - type: redis
-
-    env: docker    name: livecode-redis
-
-    plan: free    plan: free
+    plan: free
 
     region: oregon    region: oregon
 
-    dockerfilePath: ./dockerfile    maxmemoryPolicy: noeviction
+    maxmemoryPolicy: noeviction
+
+services:    dockerfilePath: ./Dockerfile.postgres
+
+  # Flask API Web Service
+
+  - type: web  # Redis    envVars:
+
+    name: livecode-api
+
+    env: docker  - type: redis      - key: POSTGRES_USER
+
+    plan: free
+
+    region: oregon    name: livecode-redis        value: postgres
+
+    dockerfilePath: ./dockerfile
+
+    envVars:    plan: free      - key: POSTGRES_PASSWORD
+
+      - key: DATABASE_URL
+
+        fromDatabase:    region: oregon        generateValue: true
+
+          name: livecode-postgres
+
+          property: connectionString    maxmemoryPolicy: noeviction      - key: POSTGRES_DB
+
+      - key: REDIS_URL
+
+        fromService:        value: livecode_platform
+
+          name: livecode-redis
+
+          type: redis  # Flask API Web Service
+
+          property: connectionString
+
+      - key: CELERY_BROKER_URL  - type: web  # Redis
+
+        fromService:
+
+          name: livecode-redis    name: livecode-api  - type: redis
+
+          type: redis
+
+          property: connectionString    env: docker    name: livecode-redis
+
+      - key: CELERY_RESULT_BACKEND
+
+        fromService:    plan: free    plan: free
+
+          name: livecode-redis
+
+          type: redis    region: oregon    region: oregon
+
+          property: connectionString
+
+      - key: SECRET_KEY    dockerfilePath: ./dockerfile    maxmemoryPolicy: noeviction
+
+        generateValue: true
+
+      - key: DEBUG    envVars:
+
+        value: "False"
+
+    healthCheckPath: /health      - key: DATABASE_URL  # Flask API
+
+
+
+  # Celery Background Worker        fromDatabase:  - type: web
+
+  - type: worker
+
+    name: livecode-celery-worker          name: livecode-postgres    name: livecode-api
+
+    env: docker
+
+    plan: free          property: connectionString    env: docker
+
+    region: oregon
+
+    dockerfilePath: ./Dockerfile.worker      - key: REDIS_URL    plan: free
 
     envVars:
 
-      - key: DATABASE_URL  # Flask API
+      - key: DATABASE_URL        fromService:    region: oregon
 
-        fromDatabase:  - type: web
+        fromDatabase:
 
-          name: livecode-postgres    name: livecode-api
+          name: livecode-postgres          name: livecode-redis    dockerfilePath: ./Dockerfile
 
-          property: connectionString    env: docker
+          property: connectionString
 
-      - key: REDIS_URL    plan: free
+      - key: REDIS_URL          type: redis    envVars:
 
-        fromService:    region: oregon
+        fromService:
 
-          name: livecode-redis    dockerfilePath: ./Dockerfile
+          name: livecode-redis          property: connectionString      - key: DATABASE_URL
 
-          type: redis    envVars:
+          type: redis
 
-          property: connectionString      - key: DATABASE_URL
+          property: connectionString      - key: CELERY_BROKER_URL        fromDatabase:
 
-      - key: CELERY_BROKER_URL        fromDatabase:
+      - key: CELERY_BROKER_URL
 
-        fromService:          name: livecode-postgres
+        fromService:        fromService:          name: livecode-postgres
 
-          name: livecode-redis          property: connectionString
+          name: livecode-redis
 
-          type: redis      - key: REDIS_URL
+          type: redis          name: livecode-redis          property: connectionString
 
-          property: connectionString        fromService:
+          property: connectionString
 
-      - key: CELERY_RESULT_BACKEND          name: livecode-redis
+      - key: CELERY_RESULT_BACKEND          type: redis      - key: REDIS_URL
 
-        fromService:          type: redis
+        fromService:
+
+          name: livecode-redis          property: connectionString        fromService:
+
+          type: redis
+
+          property: connectionString      - key: CELERY_RESULT_BACKEND          name: livecode-redis
+
+      - key: SECRET_KEY
+
+        sync: false        fromService:          type: redis
+
 
           name: livecode-redis          property: connectionString
 
