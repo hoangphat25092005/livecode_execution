@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install system dependencies including Node.js for JavaScript execution
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Run Celery worker with solo pool (required for Render free tier)
+CMD ["celery", "-A", "celery_worker.celery", "worker", "--loglevel=info", "--pool=solo"]

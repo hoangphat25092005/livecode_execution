@@ -1,0 +1,141 @@
+databases:services:
+
+  - name: livecode-postgres  # PostgreSQL Database
+
+    databaseName: livecode_platform  - type: pserv
+
+    user: postgres    name: livecode-postgres
+
+    plan: free    env: docker
+
+    region: oregon    plan: free
+
+    region: oregon
+
+services:    dockerfilePath: ./Dockerfile.postgres
+
+  # Redis    envVars:
+
+  - type: redis      - key: POSTGRES_USER
+
+    name: livecode-redis        value: postgres
+
+    plan: free      - key: POSTGRES_PASSWORD
+
+    region: oregon        generateValue: true
+
+    maxmemoryPolicy: noeviction      - key: POSTGRES_DB
+
+        value: livecode_platform
+
+  # Flask API Web Service
+
+  - type: web  # Redis
+
+    name: livecode-api  - type: redis
+
+    env: docker    name: livecode-redis
+
+    plan: free    plan: free
+
+    region: oregon    region: oregon
+
+    dockerfilePath: ./dockerfile    maxmemoryPolicy: noeviction
+
+    envVars:
+
+      - key: DATABASE_URL  # Flask API
+
+        fromDatabase:  - type: web
+
+          name: livecode-postgres    name: livecode-api
+
+          property: connectionString    env: docker
+
+      - key: REDIS_URL    plan: free
+
+        fromService:    region: oregon
+
+          name: livecode-redis    dockerfilePath: ./Dockerfile
+
+          type: redis    envVars:
+
+          property: connectionString      - key: DATABASE_URL
+
+      - key: CELERY_BROKER_URL        fromDatabase:
+
+        fromService:          name: livecode-postgres
+
+          name: livecode-redis          property: connectionString
+
+          type: redis      - key: REDIS_URL
+
+          property: connectionString        fromService:
+
+      - key: CELERY_RESULT_BACKEND          name: livecode-redis
+
+        fromService:          type: redis
+
+          name: livecode-redis          property: connectionString
+
+          type: redis      - key: SECRET_KEY
+
+          property: connectionString        generateValue: true
+
+      - key: SECRET_KEY      - key: DEBUG
+
+        generateValue: true        value: False
+
+      - key: DEBUG    healthCheckPath: /health
+
+        value: "False"
+
+    healthCheckPath: /health  # Celery Worker
+
+  - type: worker
+
+  # Celery Background Worker    name: livecode-celery-worker
+
+  - type: worker    env: docker
+
+    name: livecode-celery-worker    plan: free
+
+    env: docker    region: oregon
+
+    plan: free    dockerfilePath: ./Dockerfile.worker
+
+    region: oregon    envVars:
+
+    dockerfilePath: ./Dockerfile.worker      - key: DATABASE_URL
+
+    envVars:        fromDatabase:
+
+      - key: DATABASE_URL          name: livecode-postgres
+
+        fromDatabase:          property: connectionString
+
+          name: livecode-postgres      - key: REDIS_URL
+
+          property: connectionString        fromService:
+
+      - key: REDIS_URL          name: livecode-redis
+
+        fromService:          type: redis
+
+          name: livecode-redis          property: connectionString
+
+          type: redis      - key: SECRET_KEY
+
+          property: connectionString        sync: false
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: livecode-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: livecode-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false

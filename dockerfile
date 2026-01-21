@@ -6,10 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FLASK_APP=main.py
 
-# Install system dependencies
+# Install system dependencies including Node.js for JavaScript execution
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    nodejs \
+    npm \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
@@ -24,5 +27,5 @@ COPY . .
 # Expose port
 EXPOSE 5000
 
-# Run the application
-CMD ["python", "main.py"]
+# Use Gunicorn for production (better than Flask dev server)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "main:app"]
