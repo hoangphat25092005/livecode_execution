@@ -173,23 +173,6 @@ celery -A celery_worker.celery worker --loglevel=info --pool=solo
 Open browser: http://localhost:5000/docs
 ```
 
-### Verify Installation
-
-```bash
-# Check API health
-curl http://localhost:5000/health
-
-# Should return: {"status": "healthy"}
-
-# Check Redis connection
-curl http://localhost:5000/health/redis
-
-# Check Celery workers
-curl http://localhost:5000/health/celery
-```
-
----
-
 ## API Documentation
 
 ### Base URL
