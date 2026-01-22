@@ -6,12 +6,21 @@ ns = Namespace('code-sessions', description='Code session operations')
 
 # Define models for Swagger documentation
 session_create_model = ns.model('SessionCreate', {
-    'language': fields.String(required=False, default='python', description='Programming language'),
+    'language': fields.String(
+        required=False, 
+        default='python', 
+        description='Programming language (python, javascript, c++)',
+        enum=['python', 'javascript', 'c++']
+    ),
     'source_code': fields.String(required=False, default='', description='Source code')
 })
 
 session_update_model = ns.model('SessionUpdate', {
-    'language': fields.String(required=False, description='Programming language'),
+    'language': fields.String(
+        required=False, 
+        description='Programming language (python, javascript, c++)',
+        enum=['python', 'javascript', 'c++']
+    ),
     'source_code': fields.String(required=False, description='Source code')
 })
 

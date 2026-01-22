@@ -1,5 +1,4 @@
 from celery import Celery
-from app.config import Config
 
 celery = Celery('livecode_execution')
 
@@ -13,7 +12,7 @@ def init_celery(app):
         accept_content=['json'],
         timezone='UTC',
         enable_utc=True,
-        imports=['app.tasks.execution_tasks'],  # Auto-discover tasks
+        imports=['app.tasks.execution_tasks'], 
     )
     
     class ContextTask(celery.Task):

@@ -6,9 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FLASK_APP=main.py
 
-# Install system dependencies including Node.js for JavaScript execution
+# Install system dependencies including Node.js and g++ for JavaScript and C++ execution
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
+    build-essential \
     postgresql-client \
     nodejs \
     npm \

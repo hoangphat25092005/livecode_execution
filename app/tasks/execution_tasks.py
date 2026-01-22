@@ -1,8 +1,10 @@
+import tempfile
+import os
 from datetime import datetime, timedelta
+from app import create_app
 from app.celery_app import celery
 from app.models.db import db
 from app.models.execution_model import Execution
-from app.models.code_sessions_model import CodeSession
 import subprocess
 import time
 import logging
@@ -25,11 +27,9 @@ RATE_LIMIT_WINDOW = 60
     autoretry_for=(Exception,),
     retry_kwargs={'max_retries': 3}
 )
-def execute_code_task(self, execution_id, language, source_code):
-    
-    from app import create_app
+def execute_code_task(execution_id, language, source_code):
+
     app = create_app()
-    
     with app.app_context():
         execution = Execution.query.get(execution_id)
         
@@ -37,7 +37,7 @@ def execute_code_task(self, execution_id, language, source_code):
             logger.error(f"Execution {execution_id} not found")
             return {'error': 'Execution not found'}
         
-        # from QUEUED → RUNNING 
+        # moving from queue to running
         logger.info(f"Execution {execution_id}: QUEUED → RUNNING")
         
         # too many executions handling
@@ -73,13 +73,15 @@ def execute_code_task(self, execution_id, language, source_code):
         try:
             start_time = time.time()
             
-            # Execute code based on language
+            # execute code based on language
             logger.info(f"Executing {language} code for execution {execution_id}")
             
             if language == 'python':
                 result = _execute_python(source_code)
             elif language == 'javascript':
                 result = _execute_javascript(source_code)
+            elif language == 'c++':
+                result = _execute_c_plusplus(source_code)
             else:
                 logger.error(f"Unsupported language: {language}")
                 result = {
@@ -90,7 +92,7 @@ def execute_code_task(self, execution_id, language, source_code):
             
             execution_time = int((time.time() - start_time) * 1000)
             
-            # Truncate excessive output (prevent memory/storage abuse)
+            # handling excessive output (prevent memory/storage abuse)
             stdout = result['stdout'] or ''
             stderr = result['stderr'] or ''
             
@@ -129,7 +131,6 @@ def execute_code_task(self, execution_id, language, source_code):
         }
 
 def _execute_python(source_code):
-    """Execute Python code with protection against infinite loops and resource abuse"""
     try:
         logger.info(f"Executing Python code (timeout: 30s)")
         
@@ -154,10 +155,10 @@ def _execute_python(source_code):
         }
         
     except subprocess.TimeoutExpired:
-        logger.warning(f"Python execution timed out (30s) - likely infinite loop")
+        logger.warning(f"Python execution timed out")
         return {
             'stdout': '',
-            'stderr': 'Execution timeout exceeded (30 seconds) - possible infinite loop detected',
+            'stderr': 'Execution timeout exceeded(30 seconds)',
             'status': 'TIMEOUT'
         }
     except Exception as e:
@@ -169,7 +170,6 @@ def _execute_python(source_code):
         }
 
 def _execute_javascript(source_code):
-    """Execute JavaScript code with protection against infinite loops and resource abuse"""
     try:
         logger.info(f"Executing JavaScript code (timeout: 30s)")
         
@@ -194,10 +194,10 @@ def _execute_javascript(source_code):
         }
         
     except subprocess.TimeoutExpired:
-        logger.warning(f"JavaScript execution timed out (30s) - likely infinite loop")
+        logger.warning(f"JavaScript execution timed out")
         return {
             'stdout': '',
-            'stderr': 'Execution timeout exceeded (30 seconds) - possible infinite loop detected',
+            'stderr': 'Execution timeout exceeded (30 seconds)',
             'status': 'TIMEOUT'
         }
     except FileNotFoundError:
@@ -214,3 +214,78 @@ def _execute_javascript(source_code):
             'stderr': str(e),
             'status': 'FAILED'
         }
+
+def _execute_c_plusplus(source_code): 
+    try:
+        logger.info(f"Executing C++ code (timeout: 30s)")
+        
+        # Create temporary directory for compilation
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_file = os.path.join(temp_dir, 'program.cpp')
+            executable_file = os.path.join(temp_dir, 'program.exe' if os.name == 'nt' else 'program')
+            
+            with open(source_file, 'w') as f:
+                f.write(source_code)
+            
+            # Compile the code
+            logger.info(f"Compiling C++ code...")
+            compile_result = subprocess.run(
+                ['g++', source_file, '-o', executable_file, '-std=c++17'],
+                capture_output=True,
+                text=True,
+                timeout=10  # 10 seconds for compilation
+            )
+            
+            if compile_result.returncode != 0:
+                logger.warning(f"C++ compilation failed")
+                return {
+                    'stdout': compile_result.stdout,
+                    'stderr': f"Compilation Error:\n{compile_result.stderr}",
+                    'status': 'FAILED'
+                }
+            
+            logger.info(f"C++ compilation successful, running executable...")
+            
+            
+            run_result = subprocess.run(
+                [executable_file],
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 seconds for execution
+            )
+            
+            status = 'COMPLETED' if run_result.returncode == 0 else 'FAILED'
+            
+            if status == 'FAILED':
+                logger.warning(f"C++ execution failed with return code {run_result.returncode}")
+            else:
+                logger.info(f"C++ execution completed successfully")
+            
+            return {
+                'stdout': run_result.stdout,
+                'stderr': run_result.stderr,
+                'status': status
+            }
+        
+    except subprocess.TimeoutExpired:
+        logger.warning(f"C++ execution timed out")
+        return {
+            'stdout': '',
+            'stderr': 'Execution timeout exceeded (30 seconds)',
+            'status': 'TIMEOUT'
+        }
+    except FileNotFoundError:
+        logger.error(f"G++ compiler not found")
+        return {
+            'stdout': '',
+            'stderr': 'G++ compiler (g++) is not installed. Please install it to compile C++ code.',
+            'status': 'FAILED'
+        }
+    except Exception as e:
+        logger.error(f"C++ execution error: {str(e)}")
+        return {
+            'stdout': '',
+            'stderr': str(e),
+            'status': 'FAILED'
+        }
+
