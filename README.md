@@ -1,4 +1,4 @@
-# PHAT's LiveCode Execution API
+# LiveCode Execution API
 
 <div align="center">
 
@@ -12,9 +12,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge)](http://makeapullrequest.com)
 
-**A production-ready, asynchronous code execution API supporting Python, JavaScript, and C++**
+**An asynchronous live code execution API**
 
-[Setup](#-setup-instructions) • [Architecture](#-architecture) • [API Docs](#-api-documentation) • [Design](#-design-decisions) • [Future](#-future-improvements)
+[Setup](#-setup-instructions) • [API Docs](#-api-documentation) • [Design](#-design-decisions) • [Docker](#-docker-setup) • [Tests](#-tests-bonus)
 
 </div>
 
@@ -24,26 +24,27 @@
 
 1. [Features](#-features)
 2. [Setup Instructions](#-setup-instructions)
-3. [Architecture](#-architecture)
-4. [API Documentation](#-api-documentation)
-5. [Design Decisions & Trade-offs](#-design-decisions--trade-offs)
-6. [What We Would Improve](#-what-we-would-improve-with-more-time)
-7. [Monitoring](#-monitoring--observability)
+3. [API Documentation](#-api-documentation)
+4. [Design Decisions & Trade-offs](#-design-decisions--trade-offs)
+5. [What We Would Improve](#-what-we-would-improve-with-more-time)
+6. [Docker Setup](#-docker-setup)
+7. [Tests (Bonus)](#-tests-bonus)
+8. [Monitoring](#-monitoring--observability)
 
 ---
 
 ## Features
 
-- **Asynchronous Execution** - Non-blocking code execution using Celery task queue
-- **Multi-Language Support** - Python, JavaScript (Node.js), and C++ (g++ compiler)
-- **Persistent Storage** - PostgreSQL for sessions/executions, Redis for message queue
-- **Real-time Status Tracking** - Monitor execution states (QUEUED → RUNNING → COMPLETED/FAILED/TIMEOUT)
-- **Built-in Safety** - Timeout protection (30s), output limits (100KB), rate limiting (10/min)
-- **Interactive API Documentation** - Auto-generated Swagger UI
-- **Docker Ready** - One-command deployment with Docker Compose
+- **Asynchronous Execution** - Async chronous code execution using Celery queue
+- **Multi-Language Support** - Currently support common programming languages such as Python, JavaScript (Node.js), and C++ (g++ compiler)
+- **Data Storage** - PostgreSQL for sessions/executions, Redis for message queue
+- **Tracking Real-time Status** - Monitor execution states (QUEUED → RUNNING → COMPLETED/FAILED/TIMEOUT)
+- **Safety** - Timeout protection (30s), output limits (100KB), rate limiting (10/min)
+- **API Documentation** - Auto-generated Swagger UI
+- **Docker in Production** - One-command deployment with Docker Compose
 - **Auto-Retry Mechanism** - Transient failure recovery with exponential backoff (max 3 retries)
 - **Comprehensive Observability** - Lifecycle logging with timestamps for all execution stages
-- **Abuse Prevention** - Max 100 executions per session, rate limiting per session
+- **Abuse Prevention Mechanism** - Max 100 executions per session, rate limiting per session
 
 ---
 
@@ -54,11 +55,11 @@
 - Python 3.11+
 - PostgreSQL 15+
 - Redis 7.0+
-- Node.js (for JavaScript execution)
+- Node.js (for JS execution)
 - g++ compiler (for C++ execution)
-- Docker & Docker Compose (optional, for containerized deployment)
+- Docker & Docker Compose (for containerized deployment)
 
-### Option 1: Docker Deployment (Recommended)
+### Option 1: Docker Deployment (I highly recommend)
 
 ```bash
 # 1. Clone the repository
@@ -69,9 +70,9 @@ cd livecode-execution-api
 cp .env.docker.example .env.docker
 
 # 3. Edit .env.docker with your configuration
-# DATABASE_URL=postgresql://postgres:your_password@postgres:5432/livecode_platform
-# REDIS_URL=redis://redis:6379/0
-# SECRET_KEY=your-secret-key-here
+DATABASE_URL=postgresql://postgres:your_password@postgres:5432/livecode_platform
+REDIS_URL=redis://redis:6379/0  #Depend on your REDIS_URL here is just a my default  
+SECRET_KEY=your-secret-key-here
 
 # 4. Start all services
 docker-compose up -d --build
@@ -88,7 +89,7 @@ docker-compose down
 
 **Access Points:**
 - **API**: http://localhost:5000
-- **Swagger Docs**: http://localhost:5000/docs
+- **API Docs**: http://localhost:5000/docs
 - **Health Check**: http://localhost:5000/health
 
 ### Option 2: Local Development
@@ -98,8 +99,8 @@ docker-compose down
 git clone https://github.com/yourusername/livecode-execution-api.git
 cd livecode-execution-api
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+source venv/bin/activate  
+pip install -r requirement.txt
 
 # 2. Create environment file
 cp .env.yours .env
@@ -114,17 +115,17 @@ DEBUG=True
 psql -U postgres
 CREATE DATABASE livecode_platform;
 
-# 5. Start Redis (in separate terminal)
+# 5. Start Redis
 redis-server
 
-# 6. Start Flask API (Terminal 1)
+# 6. Start Flask API 
 python main.py
 
-# 7. Start Celery Worker (Terminal 2)
+# 7. Start Celery Worker (in another terminal)
 celery -A celery_worker.celery worker --loglevel=info --pool=solo
 
 # 8. Access Swagger UI
-# Open browser: http://localhost:5000/docs
+Open browser: http://localhost:5000/docs
 ```
 
 ### Verify Installation
@@ -142,132 +143,11 @@ curl http://localhost:5000/health/redis
 curl http://localhost:5000/health/celery
 ```
 
----
-
-## Architecture
-
-### System Components Diagram
-
-```
-┌─────────────┐      ┌──────────────┐      ┌──────────────┐
-│   Client    │─────▶│  Flask API   │─────▶│  PostgreSQL  │
-│  (Browser)  │      │   (REST)     │      │   Database   │
-└─────────────┘      └──────────────┘      └──────────────┘
-                           │
-                           │ Push Task
-                           ▼
-                     ┌──────────────┐
-                     │    Redis     │
-                     │   (Broker)   │
-                     └──────────────┘
-                           │
-                           │ Pull Task
-                           ▼
-                     ┌──────────────┐      ┌──────────────┐
-                     │    Celery    │─────▶│   Isolated   │
-                     │   Workers    │      │ Subprocess   │
-                     └──────────────┘      └──────────────┘
-```
-
-### Technology Stack
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **API Framework** | Flask 3.0 + Flask-RESTX | RESTful API with auto-generated Swagger docs |
-| **Database** | PostgreSQL 15 | Persistent storage for sessions and executions |
-| **Message Broker** | Redis 7.0 | Task queue for asynchronous execution |
-| **Task Queue** | Celery 5.3 | Distributed task processing |
-| **ORM** | SQLAlchemy | Database abstraction and migrations |
-| **Web Server** | Gunicorn | WSGI HTTP server for production |
-| **Containerization** | Docker + Compose | Isolated, reproducible environments |
-
-### Request Flow
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Flask API
-    participant PostgreSQL
-    participant Redis
-    participant Celery Worker
-    
-    Client->>Flask API: POST /code-sessions
-    Flask API->>PostgreSQL: INSERT session
-    PostgreSQL-->>Flask API: session_id
-    Flask API-->>Client: {session_id, status: "ACTIVE"}
-    
-    Client->>Flask API: POST /code-sessions/{id}/run
-    Flask API->>PostgreSQL: INSERT execution (QUEUED)
-    Flask API->>Redis: Push task to queue
-    Flask API-->>Client: {execution_id, status: "QUEUED"}
-    
-    Note over Celery Worker: Worker picks up task
-    Celery Worker->>PostgreSQL: UPDATE status = RUNNING
-    Celery Worker->>Celery Worker: Execute code (30s timeout)
-    Celery Worker->>PostgreSQL: UPDATE status = COMPLETED
-    
-    Client->>Flask API: GET /executions/{id}
-    Flask API->>PostgreSQL: SELECT execution
-    PostgreSQL-->>Flask API: execution data
-    Flask API-->>Client: {status: "COMPLETED", stdout, stderr}
-```
-
-### Data Model
-
-#### Code Sessions Table
-```sql
-CREATE TABLE code_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    language VARCHAR(50) NOT NULL CHECK (language IN ('python', 'javascript', 'c++')),
-    source_code TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-
-#### Executions Table
-```sql
-CREATE TABLE executions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID NOT NULL REFERENCES code_sessions(id) ON DELETE CASCADE,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'TIMEOUT')),
-    stdout TEXT,
-    stderr TEXT,
-    execution_time_ms INTEGER,
-    queued_at TIMESTAMP DEFAULT NOW(),
-    started_at TIMESTAMP,
-    finished_at TIMESTAMP,
-    
-    INDEX idx_session_id (session_id),
-    INDEX idx_status (status),
-    INDEX idx_created_at (queued_at)
-);
-```
-
-### Execution States
-
-```
-┌─────────┐    Worker     ┌─────────┐    Success    ┌───────────┐
-│ QUEUED  │───picks up────▶│ RUNNING │──────────────▶│ COMPLETED │
-└─────────┘    task        └─────────┘               └───────────┘
-                                 │
-                                 │ Error
-                                 ▼
-                            ┌─────────┐
-                            │ FAILED  │
-                            └─────────┘
-                                 │
-                                 │ 30s exceeded
-                                 ▼
-                            ┌─────────┐
-                            │ TIMEOUT │
-                            └─────────┘
-```
+**For detailed architecture documentation, see [DESIGN.md](DESIGN.md)**
 
 ---
 
-## 📡 API Documentation
+## API Documentation
 
 ### Base URL
 ```
@@ -353,7 +233,7 @@ DELETE /code-sessions/{session_id}
 
 #### 5. Execute Code (Asynchronous)
 ```http
-POST /code-sessions/{session_id}/run
+POST /code-sessions/{session_id}
 ```
 
 **Response (202 Accepted):**
