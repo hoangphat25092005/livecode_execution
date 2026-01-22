@@ -23,13 +23,14 @@
 ## Table of Contents
 
 1. [Features](#-features)
-2. [Setup Instructions](#-setup-instructions)
-3. [API Documentation](#-api-documentation)
-4. [Design Decisions & Trade-offs](#-design-decisions--trade-offs)
-5. [What We Would Improve](#-what-we-would-improve-with-more-time)
-6. [Docker Setup](#-docker-setup)
-7. [Tests (Bonus)](#-tests-bonus)
-8. [Monitoring](#-monitoring--observability)
+2. [Architecture](#-architecture)
+3. [Setup Instructions](#-setup-instructions)
+4. [API Documentation](#-api-documentation)
+5. [Design Decisions & Trade-offs](#-design-decisions--trade-offs)
+6. [What We Would Improve](#-what-we-would-improve-with-more-time)
+7. [Docker Setup](#-docker-setup)
+8. [Tests (Bonus)](#-tests-bonus)
+9. [Monitoring](#-monitoring--observability)
 
 ---
 
@@ -45,6 +46,51 @@
 - **Auto-Retry Mechanism** - Transient failure recovery with exponential backoff (max 3 retries)
 - **Comprehensive Observability** - Lifecycle logging with timestamps for all execution stages
 - **Abuse Prevention Mechanism** - Max 100 executions per session, rate limiting per session
+
+---
+
+## Architecture
+
+### System Architecture
+
+The LiveCode Execution API is a **distributed, asynchronous code execution platform** that allows users to write, save, and execute code in multiple programming languages (Python, JavaScript, C++) through a RESTful API.
+
+<div align="center">
+  <img src="./docs/images/z7457077336734_932ee50b286ba2785462344479ee1947.jpg" alt="LiveCode Execution API - Complete System Architecture" width="1200">
+  
+  *Figure: Complete system architecture showing client layer, Flask API layer, PostgreSQL database, Redis message queue, Celery worker layer, and code execution environments with detailed data flow and safety mechanisms*
+</div>
+
+### Data Flow
+
+1. **Client → API:** POST `/code-sessions` → Create session in PostgreSQL → Return `session_id`
+2. **Client → API:** PATCH `/code-sessions/{id}` → Update source_code → Autosave
+3. **Client → API:** POST `/code-sessions/{id}/run` → Create execution (QUEUED) → Push to Redis
+4. **Worker ← Redis:** Pull task → Update status (RUNNING) → Execute subprocess
+5. **Worker → PostgreSQL:** Update execution (COMPLETED) with stdout/stderr
+6. **Client → API:** GET `/executions/{id}` (polling) → Return results when COMPLETED
+
+### Execution States
+
+```
+QUEUED (waiting in Redis) → RUNNING (worker executing) → COMPLETED/FAILED/TIMEOUT (done)
+```
+
+### Key Architecture Features
+
+- **Asynchronous** - Non-blocking API with background workers
+- **Persistent** - PostgreSQL stores all sessions/executions
+- **Scalable** - Horizontal worker scaling, queue-based architecture
+- **Reliable** - Retry mechanism, state tracking, comprehensive logging
+- **Safe** - Timeout, output limits, rate limiting, process isolation
+
+### Safety Mechanisms
+
+- **30-second timeout** - Kills infinite loops automatically
+- **100KB output limit** - Prevents memory bombs
+- **Rate limiting** - 10 executions/minute per session
+- **Execution limit** - Maximum 100 executions per session
+- **Process isolation** - Each execution runs in separate subprocess
 
 ---
 
@@ -142,8 +188,6 @@ curl http://localhost:5000/health/redis
 curl http://localhost:5000/health/celery
 ```
 
-**For detailed architecture documentation, see [DESIGN.md](DESIGN.md)**
-
 ---
 
 ## API Documentation
@@ -166,6 +210,18 @@ Content-Type: application/json
 }
 ```
 
+**Note:** All fields are **optional**. If not provided:
+- `language` defaults to `"python"`
+- `source_code` defaults to `""` (empty string)
+
+**Minimal Request (creates empty Python session):**
+```http
+POST /code-sessions
+Content-Type: application/json
+
+{}
+```
+
 **Response (201 Created):**
 ```json
 {
@@ -186,6 +242,10 @@ Content-Type: application/json
 }
 ```
 
+**Optional Fields:**
+- `source_code` - Updates the code content
+- `language` - Changes the programming language
+
 **Response (200 OK):**
 ```json
 {
@@ -196,9 +256,10 @@ Content-Type: application/json
 
 **Behavior:**
 - Called frequently during live editing (debounced on client-side recommended: ~500ms)
-- Updates `source_code` and `updated_at` timestamp
+- Updates `source_code` and/or `language` with `updated_at` timestamp
 - Non-blocking operation
 - Idempotent (safe to call multiple times)
+- All fields are optional - update only what you need
 
 #### 3. Get Session Details
 ```http
@@ -325,17 +386,21 @@ GET /executions/session/{session_id}
   {
     "execution_id": "660e8400-e29b-41d4-a716-446655440111",
     "status": "COMPLETED",
-    "execution_time_ms": 120,
-    "created_at": "2026-01-21T10:00:00Z"
+    "queued_at": "2026-01-21T10:00:00Z",
+    "finished_at": "2026-01-21T10:00:01.120Z",
+    "execution_time_ms": 120
   },
   {
     "execution_id": "770e8400-e29b-41d4-a716-446655440222",
     "status": "FAILED",
-    "execution_time_ms": 50,
-    "created_at": "2026-01-21T10:05:00Z"
+    "queued_at": "2026-01-21T10:05:00Z",
+    "finished_at": "2026-01-21T10:05:00.050Z",
+    "execution_time_ms": 50
   }
 ]
 ```
+
+**Note:** Returns executions ordered by most recent first (`queued_at DESC`)
 
 ---
 

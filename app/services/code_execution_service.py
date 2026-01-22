@@ -13,12 +13,11 @@ class CodeExecutionService:
 
     @staticmethod
     def execute_code(session_id):
-        """Execute code from a session asynchronously"""
-        logger.info(f"🚀 Starting execution for session {session_id}")
+        logger.info(f"Starting execution for session {session_id}")
         
         session = CodeSession.query.get(session_id)
         if not session:
-            logger.error(f"❌ Session {session_id} not found")
+            logger.error(f"Session {session_id} not found")
             return None
         
         # Create execution record with QUEUED status
@@ -31,7 +30,7 @@ class CodeExecutionService:
         db.session.add(execution)
         db.session.commit()
         
-        logger.info(f"📝 Execution {execution.id} created with status QUEUED at {execution.queued_at}")
+        logger.info(f"Execution {execution.id} created with status QUEUED at {execution.queued_at}")
 
         # Send task to Celery worker
         execute_code_task.delay(
@@ -40,7 +39,7 @@ class CodeExecutionService:
             session.source_code
         )
         
-        logger.info(f"📤 Task sent to Celery for execution {execution.id}")
+        logger.info(f"Task sent to Celery for execution {execution.id}")
 
         return {
             "execution_id": str(execution.id),
@@ -53,10 +52,10 @@ class CodeExecutionService:
         execution = Execution.query.get(execution_id)
         
         if not execution:
-            logger.warning(f"⚠️ Execution {execution_id} not found")
+            logger.warning(f"Execution {execution_id} not found")
             return None
         
-        logger.info(f"📊 Retrieving execution {execution_id} - Status: {execution.status}")
+        logger.info(f"Retrieving execution {execution_id} - Status: {execution.status}")
         
         result = {
             "execution_id": str(execution.id),
@@ -78,13 +77,13 @@ class CodeExecutionService:
                 "stderr": execution.stderr or "",
                 "execution_time_ms": execution.execution_time_ms
             })
-            logger.info(f"✅ Execution {execution_id} completed in {execution.execution_time_ms}ms")
+            logger.info(f"Execution {execution_id} completed in {execution.execution_time_ms}ms")
         elif execution.status in ['FAILED', 'TIMEOUT']:
             result.update({
                 "stdout": execution.stdout or "",
                 "stderr": execution.stderr or ""
             })
-            logger.warning(f"⚠️ Execution {execution_id} ended with status {execution.status}")
+            logger.warning(f"Execution {execution_id} ended with status {execution.status}")
         
         return result
     
