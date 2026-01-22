@@ -63,8 +63,7 @@
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/livecode-execution-api.git
-cd livecode-execution-api
+git clone https://github.com/hoangphat25092005/livecode-execution.git
 
 # 2. Create environment file
 cp .env.docker.example .env.docker
