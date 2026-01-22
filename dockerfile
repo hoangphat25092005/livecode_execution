@@ -27,5 +27,10 @@ COPY . .
 # Expose port
 EXPOSE 5000
 
-# Use Gunicorn for production with dynamic PORT for Render
-CMD gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --timeout 120 --access-logfile - --error-logfile - main:app
+# Create startup script that runs both Gunicorn and Celery worker
+RUN echo '#!/bin/bash\n\
+celery -A celery_worker.celery worker --loglevel=info --pool=solo --detach\n\
+exec gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --timeout 120 --access-logfile - --error-logfile - main:app\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]
