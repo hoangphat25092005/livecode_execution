@@ -468,23 +468,19 @@ Features:
 
 ---
 
-### 2. PostgreSQL vs NoSQL
+### 2. Why Postgres
 
 **Decision:** Use PostgreSQL for persistent storage.
 
-**Pros:**
+**Postgres provide:**
 - ACID compliance (transactions, consistency)
 - Complex queries with JOINs (sessions + executions)
 - Foreign key constraints (data integrity)
 - Mature, battle-tested technology
 - Rich ecosystem (pgAdmin, extensions)
 
-**Cons:**
-- Not as fast as NoSQL for simple key-value operations
-- Vertical scaling limits (requires sharding for massive scale)
 
-**Why Chosen:** Relational data model fits well (sessions → executions). ACID guarantees are critical for execution tracking. NoSQL would sacrifice data integrity for marginal speed gains.
-
+**Why Chosen:** Relational data model fits well (sessions → executions). ACID guarantees are critical for execution tracking.
 ---
 
 ### 3. Subprocess Execution vs Docker Containers
@@ -652,64 +648,19 @@ locust -f tests/load/test_api.py --users 1000 --spawn-rate 10
 - ELK stack for centralized logging
 - **Impact:** Observability in production
 
+
+### 6. **Instead of counting for handling Rate Limitting**
+- Leaky Bucket Algorithm
+- Fixed window Algorithm
+- Provide more secure way to handling Rate Limitting
 ---
 
-### Medium Priority (Enhanced Features)
-
-#### 6. **Code Versioning & History** 
-- Track every code change (like Git)
-- Restore previous versions
-- Diff viewer
-- **Use Case:** "Undo" feature, learning analytics
-
-#### 7. **Collaborative Editing**
-- Multiple users editing same session
-- Operational Transform or CRDT for conflict resolution
-- User cursors and presence
-- **Use Case:** Pair programming, teaching
-
-#### 8. **Advanced Execution Features** 
-- File upload support (e.g., CSV for data science)
-- Standard input (`stdin`) support
-- Execution visualization (step-through debugger)
-- **Use Case:** Advanced coding exercises
-
-#### 9. **Language-Specific Features** 
-- Python: pip install packages, matplotlib plotting
-- JavaScript: npm packages, DOM manipulation
-- C++: Multi-file projects, custom compiler flags
-- **Use Case:** Real-world project simulation
-
----
-
-### Low Priority (Nice-to-Have)
-
-#### 10. **AI-Powered Features**
-- Code completion (GitHub Copilot-style)
-- Error explanation (LLM-powered hints)
-- Code review suggestions
-- **Use Case:** Learning assistance
-
-#### 11. **Execution Analytics** 
-- Most popular languages
-- Average execution time by language
-- Common error patterns
-- User engagement metrics
-- **Use Case:** Product insights
-
-#### 12. **Custom Themes & UI** 
-- Monaco Editor integration (VS Code editor)
-- Syntax highlighting themes
-- Dark mode
-- **Use Case:** Better developer experience
-
----
 
 ### Architecture Improvements
 
 #### 13. **Microservices Split**
 Current (Monolith):
-```
+```Low Prio
 Flask API (sessions + executions + health)
 ```
 
@@ -843,7 +794,7 @@ logger.info("Execution started", extra={
 
 ---
 
-## 🐳 Docker Setup
+## Docker Setup
 
 ### Docker Configuration Files
 
@@ -1027,7 +978,7 @@ open http://localhost:5555
 
 ---
 
-## 🧪 Tests (Bonus)
+## Tests
 
 ### Test Structure
 
