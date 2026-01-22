@@ -919,31 +919,14 @@ logger.info("Execution started", extra={
 Contributions welcome! Please:
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/interesting-feature`)
+3. Commit changes (`git commit -m 'Add some interesting features'`)
+4. Push to branch (`git push origin feature/interesting-feature`)
 5. Open a Pull Request
 
 ---
 
-## License
-
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
-
----
 
 ## Support
 
 - **Email:** hoangphatpy123@gmail.com
-- **Issues:** [GitHub Issues](https://github.com/yourusername/livecode-execution-api/issues)
-- 💬 **Discussions:** [GitHub Discussions](https://github.com/yourusername/livecode-execution-api/discussions)
-
----
-
-<div align="center">
-
-**⭐ Star this repo if you found it helpful!**
-
-Made with ❤️ by the LiveCode Team
-
-</div>
