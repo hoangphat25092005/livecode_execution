@@ -108,3 +108,28 @@ class SessionDetail(Resource):
             ns.abort(404, "Session not found")
         
         return {"message": "Session deleted successfully"}, 200
+
+
+@ns.route('/<string:session_id>/run')
+@ns.param('session_id', 'The session identifier')
+class SessionRun(Resource):
+    @ns.doc('run_session_code')
+    @ns.marshal_with(ns.model('ExecutionResponse', {
+        'execution_id': fields.String(description='Execution ID'),
+        'status': fields.String(description='Execution status')
+    }), code=202)
+    @ns.response(202, 'Execution queued successfully')
+    @ns.response(404, 'Session not found', error_model)
+    def post(self, session_id):
+        """Execute the current code asynchronously
+        
+        Returns immediately with execution ID and QUEUED status
+        """
+        from app.services.code_execution_service import CodeExecutionService
+        
+        result = CodeExecutionService.execute_code(session_id)
+        
+        if result is None:
+            ns.abort(404, "Session not found")
+        
+        return result, 202

@@ -5,7 +5,7 @@ from app.models.code_sessions_model import CodeSession
 class Session_Service:
     @staticmethod
     def create_session(language="python", source_code=''):
-        new_code_session = CodeSession(language=language, source_code=source_code, status='Active')
+        new_code_session = CodeSession(language=language, source_code=source_code, status='ACTIVE')
         #adding new code session to database
         db.session.add(new_code_session)
         db.session.commit()
