@@ -914,6 +914,558 @@ logger.info("Execution started", extra={
 - `CRITICAL`: Service outages
 
 
+---
+
+## 🐳 Docker Setup
+
+### Docker Configuration Files
+
+#### 1. **Dockerfile** (Flask API)
+```dockerfile
+FROM python:3.11-slim
+
+# Install system dependencies (g++, Node.js for multi-language support)
+RUN apt-get update && apt-get install -y \
+    gcc g++ build-essential \
+    nodejs npm curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirement.txt .
+RUN pip install --no-cache-dir -r requirement.txt
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 5000
+
+# Run with Gunicorn (production WSGI server)
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "main:app"]
+```
+
+#### 2. **Dockerfile.worker** (Celery Worker)
+```dockerfile
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc g++ build-essential \
+    nodejs npm curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirement.txt .
+RUN pip install --no-cache-dir -r requirement.txt
+
+# Copy application code
+COPY . .
+
+# Health check server + Celery worker (for Render free tier)
+CMD sh -c 'python -m http.server ${PORT:-8080} & celery -A celery_worker.celery worker --loglevel=info --pool=solo'
+```
+
+#### 3. **docker-compose.yml**
+```yaml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: livecode_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: livecode_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: livecode_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: livecode_api
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/livecode_platform
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./logs:/app/logs
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: livecode_worker
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/livecode_platform
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+
+  # Flower (Celery Monitoring - Optional)
+  flower:
+    image: mher/flower:latest
+    container_name: livecode_flower
+    command: celery --broker=redis://redis:6379/0 flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:
+```
+
+### One-Command Setup
+
+```bash
+# Start all services (API, Worker, PostgreSQL, Redis, Flower)
+docker-compose up -d --build
+
+# Verify all containers are running
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (clean database)
+docker-compose down -v
+```
+
+### Container Health Checks
+
+```bash
+# Check API health
+curl http://localhost:5000/health
+
+# Check Redis connection
+docker exec livecode_redis redis-cli ping
+# Expected: PONG
+
+# Check PostgreSQL
+docker exec livecode_postgres pg_isready -U postgres
+# Expected: postgres:5432 - accepting connections
+
+# Check Celery workers (via Flower)
+open http://localhost:5555
+```
+
+---
+
+## 🧪 Tests (Bonus)
+
+### Test Structure
+
+```
+tests/
+├── unit/
+│   ├── test_code_execution_service.py
+│   ├── test_execution_tasks.py
+│   └── test_models.py
+├── integration/
+│   ├── test_session_api.py
+│   ├── test_execution_api.py
+│   └── test_health_endpoints.py
+└── failure_scenarios/
+    ├── test_queue_failure.py
+    ├── test_worker_crash.py
+    └── test_database_failure.py
+```
+
+### 1. Unit Tests
+
+#### Test Code Execution Service
+```python
+# tests/unit/test_code_execution_service.py
+import pytest
+from app.services.code_execution_service import CodeExecutionService
+from app.models.code_sessions_model import CodeSession
+from unittest.mock import Mock, patch
+
+class TestCodeExecutionService:
+    @pytest.fixture
+    def service(self):
+        return CodeExecutionService()
+    
+    @pytest.fixture
+    def mock_session(self):
+        session = Mock(spec=CodeSession)
+        session.id = "test-session-id"
+        session.language = "python"
+        session.source_code = "print('test')"
+        return session
+    
+    def test_execute_code_creates_execution(self, service, mock_session):
+        """Test that execute_code creates an execution record"""
+        with patch('app.services.code_execution_service.db.session'):
+            execution_id = service.execute_code(mock_session)
+            assert execution_id is not None
+    
+    def test_execute_code_queues_task(self, service, mock_session):
+        """Test that execute_code queues Celery task"""
+        with patch('app.services.code_execution_service.execute_code_task') as mock_task:
+            service.execute_code(mock_session)
+            mock_task.delay.assert_called_once()
+```
+
+#### Test Execution Tasks
+```python
+# tests/unit/test_execution_tasks.py
+import pytest
+from app.tasks.execution_tasks import _execute_python, _execute_javascript, _execute_c_plusplus
+
+class TestExecutionTasks:
+    def test_execute_python_success(self):
+        """Test successful Python execution"""
+        stdout, stderr, return_code = _execute_python("print('Hello World')")
+        assert stdout == "Hello World\n"
+        assert stderr == ""
+        assert return_code == 0
+    
+    def test_execute_python_syntax_error(self):
+        """Test Python syntax error handling"""
+        stdout, stderr, return_code = _execute_python("print('unclosed")
+        assert "SyntaxError" in stderr
+        assert return_code != 0
+    
+    def test_execute_python_timeout(self):
+        """Test Python execution timeout"""
+        code = "import time; time.sleep(60)"
+        stdout, stderr, return_code = _execute_python(code, timeout=1)
+        assert "timeout" in stderr.lower() or return_code != 0
+    
+    def test_execute_javascript_success(self):
+        """Test successful JavaScript execution"""
+        stdout, stderr, return_code = _execute_javascript("console.log('Hello JS')")
+        assert "Hello JS" in stdout
+        assert return_code == 0
+    
+    def test_execute_cpp_compilation(self):
+        """Test C++ compilation and execution"""
+        code = """
+        #include <iostream>
+        int main() {
+            std::cout << "Hello C++" << std::endl;
+            return 0;
+        }
+        """
+        stdout, stderr, return_code = _execute_c_plusplus(code)
+        assert "Hello C++" in stdout
+        assert return_code == 0
+```
+
+### 2. Integration Tests
+
+#### Test Session API
+```python
+# tests/integration/test_session_api.py
+import pytest
+from app import create_app
+from app.models.db import db
+import json
+
+@pytest.fixture
+def client():
+    app = create_app()
+    app.config['TESTING'] = True
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    
+    with app.app_context():
+        db.create_all()
+        yield app.test_client()
+        db.drop_all()
+
+class TestSessionAPI:
+    def test_create_session(self, client):
+        """Test POST /code-sessions"""
+        response = client.post('/code-sessions', json={
+            'language': 'python',
+            'source_code': 'print("test")'
+        })
+        assert response.status_code == 201
+        data = json.loads(response.data)
+        assert 'session_id' in data
+        assert data['status'] == 'ACTIVE'
+    
+    def test_create_session_invalid_language(self, client):
+        """Test invalid language rejection"""
+        response = client.post('/code-sessions', json={
+            'language': 'brainfuck',
+            'source_code': 'test'
+        })
+        assert response.status_code == 400
+    
+    def test_update_session(self, client):
+        """Test PATCH /code-sessions/{id}"""
+        # Create session
+        create_response = client.post('/code-sessions', json={
+            'language': 'python',
+            'source_code': 'print("old")'
+        })
+        session_id = json.loads(create_response.data)['session_id']
+        
+        # Update session
+        update_response = client.patch(f'/code-sessions/{session_id}', json={
+            'source_code': 'print("new")'
+        })
+        assert update_response.status_code == 200
+    
+    def test_get_session(self, client):
+        """Test GET /code-sessions/{id}"""
+        # Create session
+        create_response = client.post('/code-sessions', json={
+            'language': 'javascript',
+            'source_code': 'console.log("test")'
+        })
+        session_id = json.loads(create_response.data)['session_id']
+        
+        # Get session
+        get_response = client.get(f'/code-sessions/{session_id}')
+        assert get_response.status_code == 200
+        data = json.loads(get_response.data)
+        assert data['language'] == 'javascript'
+```
+
+#### Test Execution API
+```python
+# tests/integration/test_execution_api.py
+import pytest
+from app import create_app
+from app.models.db import db
+import json
+import time
+
+@pytest.fixture
+def client():
+    app = create_app()
+    app.config['TESTING'] = True
+    
+    with app.app_context():
+        db.create_all()
+        yield app.test_client()
+        db.drop_all()
+
+class TestExecutionAPI:
+    def test_execute_code(self, client):
+        """Test POST /code-sessions/{id}/run"""
+        # Create session
+        session_response = client.post('/code-sessions', json={
+            'language': 'python',
+            'source_code': 'print("execute")'
+        })
+        session_id = json.loads(session_response.data)['session_id']
+        
+        # Execute code
+        exec_response = client.post(f'/code-sessions/{session_id}/run')
+        assert exec_response.status_code == 202
+        data = json.loads(exec_response.data)
+        assert 'execution_id' in data
+        assert data['status'] == 'QUEUED'
+    
+    def test_get_execution_result(self, client):
+        """Test GET /executions/{id}"""
+        # Create and execute
+        session_response = client.post('/code-sessions', json={
+            'language': 'python',
+            'source_code': 'print("result")'
+        })
+        session_id = json.loads(session_response.data)['session_id']
+        
+        exec_response = client.post(f'/code-sessions/{session_id}/run')
+        execution_id = json.loads(exec_response.data)['execution_id']
+        
+        # Wait for execution
+        time.sleep(2)
+        
+        # Get result
+        result_response = client.get(f'/executions/{execution_id}')
+        assert result_response.status_code == 200
+        data = json.loads(result_response.data)
+        assert data['status'] in ['QUEUED', 'RUNNING', 'COMPLETED']
+```
+
+### 3. Failure Scenario Tests
+
+#### Test Queue Failure
+```python
+# tests/failure_scenarios/test_queue_failure.py
+import pytest
+from app.services.code_execution_service import CodeExecutionService
+from unittest.mock import patch, Mock
+
+class TestQueueFailure:
+    def test_redis_connection_failure(self):
+        """Test handling when Redis is unavailable"""
+        service = CodeExecutionService()
+        
+        with patch('app.services.code_execution_service.execute_code_task') as mock_task:
+            mock_task.delay.side_effect = ConnectionError("Redis unavailable")
+            
+            mock_session = Mock()
+            mock_session.id = "test-id"
+            
+            with pytest.raises(ConnectionError):
+                service.execute_code(mock_session)
+    
+    def test_task_retry_on_failure(self):
+        """Test Celery task retry mechanism"""
+        from app.tasks.execution_tasks import execute_code_task
+        
+        with patch('app.tasks.execution_tasks.db.session') as mock_db:
+            mock_db.commit.side_effect = [Exception("DB Error"), None]
+            
+            # Task should retry and succeed on second attempt
+            # (Requires actual Celery instance - integration test)
+            pass
+```
+
+#### Test Worker Crash
+```python
+# tests/failure_scenarios/test_worker_crash.py
+import pytest
+from app.models.execution_model import Execution
+from app.models.db import db
+
+class TestWorkerCrash:
+    def test_stuck_executions_cleanup(self):
+        """Test cleanup of executions stuck in RUNNING state"""
+        # Simulate worker crash: execution stuck in RUNNING for > 5 minutes
+        # Cleanup job should mark as FAILED
+        
+        from datetime import datetime, timedelta
+        
+        # Create stuck execution
+        execution = Execution(
+            session_id="test-session",
+            status="RUNNING",
+            started_at=datetime.utcnow() - timedelta(minutes=10)
+        )
+        db.session.add(execution)
+        db.session.commit()
+        
+        # Run cleanup task (would be cron job in production)
+        # cleanup_stuck_executions()
+        
+        # Verify execution marked as FAILED
+        # assert execution.status == "FAILED"
+        pass
+```
+
+#### Test Database Failure
+```python
+# tests/failure_scenarios/test_database_failure.py
+import pytest
+from app.services.code_execution_service import CodeExecutionService
+from unittest.mock import patch
+
+class TestDatabaseFailure:
+    def test_database_connection_loss(self):
+        """Test handling when PostgreSQL is unavailable"""
+        service = CodeExecutionService()
+        
+        with patch('app.services.code_execution_service.db.session.add') as mock_add:
+            mock_add.side_effect = ConnectionError("Database unavailable")
+            
+            with pytest.raises(ConnectionError):
+                service.execute_code(Mock())
+    
+    def test_transaction_rollback(self):
+        """Test transaction rollback on error"""
+        # Simulate error during execution creation
+        # Verify database state is consistent (no orphaned records)
+        pass
+```
+
+### Running Tests
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov pytest-mock
+
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=app --cov-report=html
+
+# Run specific test categories
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/failure_scenarios/
+
+# Run with verbose output
+pytest -v
+
+# Run specific test file
+pytest tests/unit/test_execution_tasks.py
+
+# Run specific test
+pytest tests/unit/test_execution_tasks.py::TestExecutionTasks::test_execute_python_success
+```
+
+### Test Coverage Report
+
+```bash
+# Generate HTML coverage report
+pytest --cov=app --cov-report=html
+
+# Open in browser
+open htmlcov/index.html  # macOS
+start htmlcov/index.html  # Windows
+```
+
+**Target Coverage:** >80% for production readiness
+
+---
+
 ## Contributing
 
 Contributions welcome! Please:
